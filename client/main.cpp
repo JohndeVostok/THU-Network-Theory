@@ -181,16 +181,13 @@ int recvLs()
 	char buf[BUFSIZ];
 	int len = recv(client_sockfd, buf, BUFSIZ, 0);
 	buf[len] = '\0';
-	printf("!!!%d\n%s\n", strlen(buf), buf);
 	string str(buf);
 	printf("Friend list:\n");
 	printf("%s\n", str.substr(5).c_str());
 }
 
-int sendChat(string username, char *buf)
+int sendChat(string username)
 {
-	sprintf(buf, "chat %s %s", manager.getName().c_str(), username.c_str());
-	manager.startChat(username);
 }
 
 int sendSendmsg(string content, char *buf)
@@ -213,14 +210,15 @@ int sendRecvfile(char *buf)
 	sprintf(buf, "recvfile %s", manager.getName().c_str());
 }
 
-int sendProfile(char *buf)
+int sendProfile()
 {
+	char buf[BUFSIZ];
 	sprintf(buf, "profile %s", manager.getName().c_str());
-}
-
-int sendSync(char *buf)
-{
-	sprintf(buf, "sync %s", manager.getName().c_str());
+	send(client_sockfd, buf, strlen(buf), 0);
+	int len = recv(client_sockfd, buf, BUFSIZ, 0);
+	buf[len] = '\0';
+	string str(buf);
+	printf("Your profile: %s\n", str.c_str());
 }
 
 int main()
@@ -334,11 +332,7 @@ int main()
 				continue;
 			}
 			scanf("%s", &u[0]);
-			sendChat(u, buf);
-			len = send(client_sockfd, buf, strlen(buf), 0);
-			len = recv(client_sockfd, buf, BUFSIZ, 0);
-			buf[len] = '\0';
-			printf("%s\n", buf);
+			manager.startChat(u);
 			continue;
 		}
 		if (!strcmp(s, "sendmsg"))
@@ -392,11 +386,8 @@ int main()
 				printf("Please login or exit chat.\n");
 				continue;
 			}
-			sendRecvfile(buf);
-			len = send(client_sockfd, buf, strlen(buf), 0);
-			len = recv(client_sockfd, buf, BUFSIZ, 0);
-			buf[len] = '\0';
-			printf("%s\n", buf);
+			sendRecvfile();
+			recvRecvfile()
 			continue;
 		}
 		if (!strcmp(s, "profile"))
@@ -406,11 +397,8 @@ int main()
 				printf("Please login or exit chat.\n");
 				continue;
 			}
-			sendProfile(buf);
-			len = send(client_sockfd, buf, strlen(buf), 0);
-			len = recv(client_sockfd, buf, BUFSIZ, 0);
-			buf[len] = '\0';
-			printf("%s\n", buf);
+			sendProfile();
+			recvProfile();
 			continue;
 		}
 		if (!strcmp(s, "exit"))
