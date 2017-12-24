@@ -133,7 +133,7 @@ int main()
 			scanf("%s", &p[0]);
 			sendLogin(u, p, buf);
 			len = send(client_sockfd, buf, strlen(buf), 0);
-			len = recv(client_sockfd, buf, strlen(buf), 0);
+			len = recv(client_sockfd, buf, BUFSIZ, 0);
 			buf[len] = '\0';
 			printf("%s\n", buf);
 			continue;
@@ -151,7 +151,7 @@ int main()
 			scanf("%s", &p[0]);
 			sendRegist(u, p, buf);
 			len = send(client_sockfd, buf, strlen(buf), 0);
-			len = recv(client_sockfd, buf, strlen(buf), 0);
+			len = recv(client_sockfd, buf, BUFSIZ, 0);
 			buf[len] = '\0';
 			printf("%s\n", buf);
 			continue;
@@ -165,7 +165,7 @@ int main()
 			}
 			sendSearch(buf);
 			len = send(client_sockfd, buf, strlen(buf), 0);
-			len = recv(client_sockfd, buf, strlen(buf), 0);
+			len = recv(client_sockfd, buf, BUFSIZ, 0);
 			buf[len] = '\0';
 			printf("%s\n", buf);
 			continue;
@@ -180,7 +180,7 @@ int main()
 			scanf("%s", &u[0]);
 			sendAdd(u, buf);
 			len = send(client_sockfd, buf, strlen(buf), 0);
-			len = recv(client_sockfd, buf, strlen(buf), 0);
+			len = recv(client_sockfd, buf, BUFSIZ, 0);
 			buf[len] = '\0';
 			printf("%s\n", buf);
 			continue;
@@ -194,7 +194,7 @@ int main()
 			}
 			sendLs(buf);
 			len = send(client_sockfd, buf, strlen(buf), 0);
-			len = recv(client_sockfd, buf, strlen(buf), 0);
+			len = recv(client_sockfd, buf, BUFSIZ, 0);
 			buf[len] = '\0';
 			printf("%s\n", buf);
 			continue;
@@ -209,7 +209,7 @@ int main()
 			scanf("%s", &u[0]);
 			sendChat(u, buf);
 			len = send(client_sockfd, buf, strlen(buf), 0);
-			len = recv(client_sockfd, buf, strlen(buf), 0);
+			len = recv(client_sockfd, buf, BUFSIZ, 0);
 			buf[len] = '\0';
 			printf("%s\n", buf);
 			continue;
@@ -224,7 +224,7 @@ int main()
 			scanf("%s", &u[0]);
 			sendSendmsg(u, buf);
 			len = send(client_sockfd, buf, strlen(buf), 0);
-			len = recv(client_sockfd, buf, strlen(buf), 0);
+			len = recv(client_sockfd, buf, BUFSIZ, 0);
 			buf[len] = '\0';
 			printf("%s\n", buf);
 			continue;
@@ -239,7 +239,7 @@ int main()
 			scanf("%s", &u[0]);
 			sendSendfile(u, buf);
 			len = send(client_sockfd, buf, strlen(buf), 0);
-			len = recv(client_sockfd, buf, strlen(buf), 0);
+			len = recv(client_sockfd, buf, BUFSIZ, 0);
 			buf[len] = '\0';
 			printf("%s\n", buf);
 			continue;
@@ -253,7 +253,7 @@ int main()
 			}
 			sendRecvmsg(buf);
 			len = send(client_sockfd, buf, strlen(buf), 0);
-			len = recv(client_sockfd, buf, strlen(buf), 0);
+			len = recv(client_sockfd, buf, BUFSIZ, 0);
 			buf[len] = '\0';
 			printf("%s\n", buf);
 			continue;
@@ -267,7 +267,7 @@ int main()
 			}
 			sendRecvfile(buf);
 			len = send(client_sockfd, buf, strlen(buf), 0);
-			len = recv(client_sockfd, buf, strlen(buf), 0);
+			len = recv(client_sockfd, buf, BUFSIZ, 0);
 			buf[len] = '\0';
 			printf("%s\n", buf);
 			continue;
@@ -281,27 +281,19 @@ int main()
 			}
 			sendProfile(buf);
 			len = send(client_sockfd, buf, strlen(buf), 0);
-			len = recv(client_sockfd, buf, strlen(buf), 0);
-			buf[len] = '\0';
-			printf("%s\n", buf);
-			continue;
-		}
-		if (!strcmp(s, "sync"))
-		{
-			if (user.state != 1)
-			{
-				printf("Please login or exit chat.\n");
-				continue;
-			}
-			sendSync(buf);
-			len = send(client_sockfd, buf, strlen(buf), 0);
-			len = recv(client_sockfd, buf, strlen(buf), 0);
+			len = recv(client_sockfd, buf, BUFSIZ, 0);
 			buf[len] = '\0';
 			printf("%s\n", buf);
 			continue;
 		}
 		if (!strcmp(s, "exit"))
 		{
+			if (user.state == 1)
+			{
+				printf("Logout.\n");
+				user.state = 0;
+				continue;
+			}
 			if (user.state == 2)
 			{
 				printf("Exit chat.\n");
