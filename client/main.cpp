@@ -33,19 +33,21 @@ int sendSearch(char *buf)
 	sprintf(buf, "search %s", user.username.c_str());
 }
 
-int sendAdd(string username char *buf)
+int sendAdd(string username, char *buf)
 {
 	sprintf(buf, "add %s %s", user.username.c_str(), username.c_str());
 }
 
 int sendLs(char *buf)
 {
-	sprintf(buf, "ls %s", user.username);
+	sprintf(buf, "ls %s", user.username.c_str());
 }
 
-int sendChat(string username char *buf)
+int sendChat(string username, char *buf)
 {
 	sprintf(buf, "chat %s %s", user.username.c_str(), username.c_str());
+	user.state = 2;
+	user.chatwith = username;
 }
 
 int sendSendmsg(string content, char *buf)
@@ -107,10 +109,10 @@ int main()
 	printf("connected to server\n");
 	len = recv(client_sockfd, buf, BUFSIZ, 0);
 	buf[len] = '\0';
-	printf("%s", buf);
+	printf("%s\n", buf);
 	printf("Enter 'help' for more.");
 
-	user.clear();
+	user.username = "";
 	char s[128];
 	string u, p;
 	u.resize(128);
@@ -120,7 +122,7 @@ int main()
 		scanf("%s", s);
 		if (!strcmp(s, "login"))
 		{
-			if (user.state() == 2)
+			if (user.state == 2)
 			{
 				printf("Please exit chat.\n");
 				continue;
@@ -138,7 +140,7 @@ int main()
 		}
 		if (!strcmp(s, "regist"))
 		{
-			if (!user.state() == 2)
+			if (!user.state == 2)
 			{
 				printf("Please exit chat.\n");
 				continue;
@@ -156,7 +158,7 @@ int main()
 		}
 		if (!strcmp(s, "search"))
 		{
-			if (user.state() != 1)
+			if (user.state != 1)
 			{
 				printf("Please login or exit chat.\n");
 				continue;
@@ -170,7 +172,7 @@ int main()
 		}
 		if (!strcmp(s, "add"))
 		{
-			if (user.state() != 1)
+			if (user.state != 1)
 			{
 				printf("Please login or exit chat.\n");
 				continue;
@@ -185,7 +187,7 @@ int main()
 		}
 		if (!strcmp(s, "ls"))
 		{
-			if (user.state() != 1)
+			if (user.state != 1)
 			{
 				printf("Please login or exit chat.\n");
 				continue;
@@ -199,7 +201,7 @@ int main()
 		}
 		if (!strcmp(s, "chat"))
 		{
-			if (user.state() != 1)
+			if (user.state != 1)
 			{
 				printf("Please login or exit chat.\n");
 				continue;
@@ -214,7 +216,7 @@ int main()
 		}
 		if (!strcmp(s, "sendmsg"))
 		{
-			if (user.state() != 2)
+			if (user.state != 2)
 			{
 				printf("Please enter chat first.\n");
 				continue;
@@ -229,7 +231,7 @@ int main()
 		}
 		if (!strcmp(s, "sendfile"))
 		{
-			if (user.state() != 2)
+			if (user.state != 2)
 			{
 				printf("Please enter chat first.\n");
 				continue;
@@ -244,7 +246,7 @@ int main()
 		}
 		if (!strcmp(s, "recvmsg"))
 		{
-			if (user.state() != 1)
+			if (user.state != 1)
 			{
 				printf("Please login or exit chat.\n");
 				continue;
@@ -258,7 +260,7 @@ int main()
 		}
 		if (!strcmp(s, "recvfile"))
 		{
-			if (user.state() != 1)
+			if (user.state != 1)
 			{
 				printf("Please login or exit chat.\n");
 				continue;
@@ -272,7 +274,7 @@ int main()
 		}
 		if (!strcmp(s, "profile"))
 		{
-			if (user.state() != 1)
+			if (user.state != 1)
 			{
 				printf("Please login or exit chat.\n");
 				continue;
@@ -286,7 +288,7 @@ int main()
 		}
 		if (!strcmp(s, "sync"))
 		{
-			if (user.state() != 1)
+			if (user.state != 1)
 			{
 				printf("Please login or exit chat.\n");
 				continue;
@@ -300,9 +302,10 @@ int main()
 		}
 		if (!strcmp(s, "exit"))
 		{
-			if (user.state() == 2)
+			if (user.state == 2)
 			{
-				user.state(1);
+				printf("Exit chat.\n");
+				user.state = 1;
 				continue;
 			}
 			else break;
