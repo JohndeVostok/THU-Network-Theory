@@ -129,7 +129,7 @@ int main()
 			scanf("%s", &u[0]);
 			printf("Enter password:\n");
 			scanf("%s", &p[0]);
-			sendLogin(u, p, buf);
+			login(u, p, buf);
 			len = send(client_sockfd, buf, strlen(buf), 0);
 			len = recv(client_sockfd, buf, strlen(buf), 0);
 			buf[len] = '\0';
@@ -147,7 +147,7 @@ int main()
 			scanf("%s", &u[0]);
 			printf("Enter password:\n");
 			scanf("%s", &p[0]);
-			sendRegist(u, p, buf);
+			regist(u, p, buf);
 			len = send(client_sockfd, buf, strlen(buf), 0);
 			len = recv(client_sockfd, buf, strlen(buf), 0);
 			buf[len] = '\0';
@@ -161,7 +161,7 @@ int main()
 				printf("Please login or exit chat.\n");
 				continue;
 			}
-			sendSearch(buf);
+			search(buf);
 			len = send(client_sockfd, buf, strlen(buf), 0);
 			len = recv(client_sockfd, buf, strlen(buf), 0);
 			buf[len] = '\0';
@@ -176,7 +176,7 @@ int main()
 				continue;
 			}
 			scanf("%s", &u[0]);
-			sendAdd(u, buf);
+			sea(u, buf);
 			len = send(client_sockfd, buf, strlen(buf), 0);
 			len = recv(client_sockfd, buf, strlen(buf), 0);
 			buf[len] = '\0';
