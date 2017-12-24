@@ -25,6 +25,7 @@ class User
 	{
 		username = name;
 		password = pass;
+		friendList.push_back(name);
 	}
 
 	string getName()
@@ -92,7 +93,7 @@ class Manager
 		int flag = 1;
 		for (auto i : userList) if (user2 == i.getName()){flag = 0; break;}
 		if (flag) return flag;
-		for (auto i : userList) if (user1 == i.getName()) return i.addFriend(user2);
+		for (int i = 0; i < userList.size(); i++) if (user1 == userList[i].getName()) return userList[i].addFriend(user2);
 		return 2;
 	}
 
@@ -124,7 +125,7 @@ void recv_data(int client_sockfd)
 	{
 		buf[len] = '\0';
 		sscanf(buf, "%s%s%s%s", args[0], args[1], args[2], args[3]);
-		printf("%s\n", args[0]);
+		printf("Recv: %s\n", buf);
 		if (!strcmp(args[0], "login"))
 		{
 			manager.lock();
@@ -145,6 +146,7 @@ void recv_data(int client_sockfd)
 		if (!strcmp(args[0], "add"))
 		{
 			manager.lock();
+			printf("%s %s\n", args[1], args[2]);
 			int status = manager.addFriend(args[1], args[2]);
 			manager.unlock();
 			sprintf(buf, "%d", status);
