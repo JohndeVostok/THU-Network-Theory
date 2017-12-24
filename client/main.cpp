@@ -110,7 +110,7 @@ int main()
 	len = recv(client_sockfd, buf, BUFSIZ, 0);
 	buf[len] = '\0';
 	printf("%s\n", buf);
-	printf("Enter 'help' for more.");
+	printf("Enter 'help' for more.\n");
 
 	user.username = "";
 	char s[128];
@@ -310,6 +310,7 @@ int main()
 			}
 			else break;
 		}
+		printf("???\n");
 	}
 	close(client_sockfd);
 	return 0;

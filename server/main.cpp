@@ -5,26 +5,27 @@
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
-#include <pthread.h>
+#include <thread>
 
-pthread_t threads[128];
-int threads_size = 0;
+using namespace std;
 
 void recv_data(int client_sockfd)
 {
+	printf("!!!%d\n", client_sockfd);
 	char buf[BUFSIZ];
 	memset(buf, 0, BUFSIZ);
 	int len;
 	while ((len = recv(client_sockfd, buf, BUFSIZ, 0)) > 0)
 	{
 		buf[len] = '\0';
-		printf("%s\n", buf);
+		printf("!!!%s\n", buf);
 		if (send(client_sockfd, buf, len, 0) < 0)
 		{
 			perror("write error");
 			return;
 		}
 	}
+	printf("!!!\n");
 	close(client_sockfd);
 }
 
@@ -59,8 +60,6 @@ int main(int argc, char *argv[])
 		return 1;
 	}
 
-	memset(threads, 0, sizeof(threads));
-	
 	sin_size = sizeof(struct sockaddr_in);
 	while(1)
 	{
@@ -70,7 +69,9 @@ int main(int argc, char *argv[])
 			perror("accept error");
 			return 1;
 		}
-		thread *client = new thread(recv_data, client_sockfd);
+		printf("Accept client %s\n", inet_ntoa(remote_addr.sin_addr));
+		len = send(client_sockfd, "Welcome to MZX Chat", 19, 0);
+		thread(recv_data, client_sockfd).detach();
 	}
 	close(server_sockfd);
 	return 0;
