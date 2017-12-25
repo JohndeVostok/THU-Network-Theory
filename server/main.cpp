@@ -12,12 +12,23 @@
 
 using namespace std;
 
+struct Msg
+{
+	int read;
+	string user, content;
+	string getStr()
+	{
+		return user + ": " + content;
+	}
+};
+
 class User
 {
 	private:
 	
 	string username, password;
 	vector <string> friendList;
+	vector <Msg> msgList;
 
 	public:
 	
@@ -26,6 +37,7 @@ class User
 		username = name;
 		password = pass;
 		friendList.push_back(name);
+		msgList.clear();
 	}
 
 	string getName()
@@ -40,16 +52,56 @@ class User
 
 	int addFriend(string name)
 	{
-		for (auto i : friendList) if (i == name) return 1;
+		for (auto const &i : friendList) if (name == i) return 1;
 		friendList.push_back(name);
 		return 0;
 	}
 
 	string searchFriend()
 	{
-		string buf = "HEAD\n";
-		for (auto i : friendList) buf += i + "\n";
+		string buf = "";
+		for (auto const &i : friendList) buf += i + "\n";
 		return buf;
+	}
+
+	int chat(string user)
+	{
+		for (auto const &i : friendList) if (i == user) return 0;
+		return 1;
+	}
+
+	int sendmsg(string user, string str)
+	{
+		Msg msg;
+		msg.user = user;
+		msg.content = str;
+		msg.read = 0;
+		msgList.push_back(msg);
+		return 0;
+	}
+
+	string recvmsg()
+	{
+		string str("undefined");
+		for (auto &i : msgList) if (!i.read)
+		{
+			i.read = 1;
+			str = i.getStr();
+			break;
+		}
+		return str;
+	}
+
+	string recvmsgFrom(string user)
+	{
+		string str("undefined");
+		for (auto &i : msgList) if (user == i.user && (!i.read))
+		{
+			i.read = 1;
+			str = i.getStr();
+			break;
+		}
+		return str;
 	}
 };
 
@@ -77,13 +129,13 @@ class Manager
 
 	int login(string user, string pass)
 	{
-		for (auto i : userList) if (user == i.getName()) return i.login(pass);
+		for (auto &i : userList) if (user == i.getName()) return i.login(pass);
 		return 2;
 	}
 
 	int regist(string user, string pass)
 	{
-		for (auto i : userList) if (user == i.getName()) return 1;
+		for (auto &i : userList) if (user == i.getName()) return 1;
 		userList.push_back(User(user, pass));
 		return 0;
 	}
@@ -91,22 +143,22 @@ class Manager
 	int addFriend(string user1, string user2)
 	{
 		int flag = 1;
-		for (auto i : userList) if (user2 == i.getName()){flag = 0; break;}
+		for (auto &i : userList) if (user2 == i.getName()){flag = 0; break;}
 		if (flag) return flag;
-		for (int i = 0; i < userList.size(); i++) if (user1 == userList[i].getName()) return userList[i].addFriend(user2);
+		for (auto &i : userList) if (user1 == i.getName()) return i.addFriend(user2);
 		return 2;
 	}
 
 	string search()
 	{
-		string buf = "HEAD\n";
-		for (auto i : userList) buf += i.getName() + "\n";
+		string buf = "";
+		for (auto &i : userList) buf += i.getName() + "\n";
 		return buf;
 	}
 
 	string searchFriend(string user)
 	{
-		for (auto i : userList) if (user == i.getName()) return i.searchFriend();
+		for (auto &i : userList) if (user == i.getName()) return i.searchFriend();
 		return "Undefined user.";
 	}
 
@@ -114,6 +166,27 @@ class Manager
 	{
 		return user;
 	}
+
+	int chat(string user1, string user2)
+	{
+		for (auto &i : userList) if (user1 == i.getName()) return i.chat(user2);
+	}
+
+	int sendmsg(string user1, string user2, string content)
+	{
+		for (auto &i : userList) if (user2 == i.getName()) return i.sendmsg(user1, content);
+	}
+
+	string recvmsg(string user)
+	{
+		for (auto &i : userList) if (user == i.getName()) return i.recvmsg();
+	}
+
+	string recvmsgFrom(string user1, string user2)
+	{
+		for (auto &i : userList) if (user1 == i.getName()) return i.recvmsgFrom(user2);
+	}
+
 } manager;
 
 void recv_data(int client_sockfd)
@@ -133,15 +206,16 @@ void recv_data(int client_sockfd)
 			manager.unlock();
 			sprintf(buf, "%d", status);
 			send(client_sockfd, buf, strlen(buf), 0);
+			continue;
 		}
 		if (!strcmp(args[0], "regist"))
 		{
 			manager.lock();
 			int status = manager.regist(args[1], args[2]);
 			manager.unlock();
-			printf("%d\n", status);
 			sprintf(buf, "%d", status);
 			send(client_sockfd, buf, strlen(buf), 0);
+			continue;
 		}
 		if (!strcmp(args[0], "add"))
 		{
@@ -151,6 +225,7 @@ void recv_data(int client_sockfd)
 			manager.unlock();
 			sprintf(buf, "%d", status);
 			send(client_sockfd, buf, strlen(buf), 0);
+			continue;
 		}
 		if (!strcmp(args[0], "search"))
 		{
@@ -159,6 +234,7 @@ void recv_data(int client_sockfd)
 			manager.unlock();
 			sprintf(buf, "%s", str.c_str());
 			send(client_sockfd, buf, strlen(buf), 0);
+			continue;
 		}
 		if (!strcmp(args[0], "ls"))
 		{
@@ -167,7 +243,74 @@ void recv_data(int client_sockfd)
 			manager.unlock();
 			sprintf(buf, "%s", str.c_str());
 			send(client_sockfd, buf, strlen(buf), 0);
+			continue;
 		}
+		if (!strcmp(args[0], "profile"))
+		{
+			manager.lock();
+			string str = manager.profile(args[1]);
+			manager.unlock();
+			sprintf(buf, "%s", str.c_str());
+			send(client_sockfd, buf, strlen(buf), 0);
+			continue;
+		}
+		if (!strcmp(args[0], "chat"))
+		{
+			manager.lock();
+			int status = manager.chat(args[1], args[2]);
+			manager.unlock();
+			sprintf(buf, "%d", status);
+			printf("%s\n", buf);
+			send(client_sockfd, buf, strlen(buf), 0);
+			continue;
+		}
+		if (!strcmp(args[0], "sendmsg"))
+		{
+			manager.lock();
+			manager.sendmsg(args[1], args[2], args[3]);
+			manager.unlock();
+			sprintf(buf, "Sendmsg succeed.");
+			send(client_sockfd, buf, strlen(buf), 0);
+			continue;
+		}
+		if (!strcmp(args[0], "sendfile"))
+		{
+			sprintf(buf, "Sendfile succeed.");
+			send(client_sockfd, buf, strlen(buf), 0);
+			continue;
+		}
+		if (!strcmp(args[0], "recvmsg"))
+		{
+			manager.lock();
+			string str = manager.recvmsg(args[1]);
+			manager.unlock();
+			sprintf(buf, "%s", str.c_str());
+			send(client_sockfd, buf, strlen(buf), 0);
+			continue;
+		}
+		if (!strcmp(args[0], "recvmsgfrom"))
+		{
+			manager.lock();
+			string str = manager.recvmsgFrom(args[1], args[2]);
+			manager.unlock();
+			sprintf(buf, "%s", str.c_str());
+			send(client_sockfd, buf, strlen(buf), 0);
+			continue;
+		}
+		if (!strcmp(args[0], "recvfile"))
+		{
+			sprintf(buf, "Recvfile succeed.");
+			send(client_sockfd, buf, strlen(buf), 0);
+			continue;
+		}
+		if (!strcmp(args[0], "recvfilefrom"))
+		{
+			sprintf(buf, "Recvfile from %s succeed.", args[2]);
+			send(client_sockfd, buf, strlen(buf), 0);
+			continue;
+		}
+		sprintf(buf, "Undefined.");
+		send(client_sockfd, buf, strlen(buf), 0);
 	}
 	close(client_sockfd);
 }

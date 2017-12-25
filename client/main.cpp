@@ -6,22 +6,31 @@
 #include <netinet/in.h>
 #include <arpa/inet.h>
 #include <string>
+#include <thread>
+#include <mutex>
 
 using namespace std;
 
 int client_sockfd;
+
+void recvMsgAuto();
 
 class Manager
 {
 	private:
 	
 	string name, chatUser, buffer;
+	mutex mut;
+	int threadExitFlag;
 
 	int status;
 	
 	public:
 	
-	Manager() {}
+	Manager()
+	{
+		threadExitFlag = 0;
+	}
 
 	string getName()
 	{
@@ -54,6 +63,10 @@ class Manager
 	{
 		chatUser = user;
 		status = 2;
+		mut.lock();
+		threadExitFlag = 1;
+		mut.unlock();
+		thread(recvMsgAuto).detach();
 	}
 
 	string getChat()
@@ -64,163 +77,236 @@ class Manager
 	int endChat()
 	{
 		chatUser = "";
+		status = 1;
+		mut.lock();
+		threadExitFlag = 0;
+		mut.unlock();
 	}
+
+	int lock()
+	{
+		mut.lock();
+	}
+
+	int unlock()
+	{
+		mut.unlock();
+	}
+
+	int getFlag()
+	{
+		return threadExitFlag;
+	}
+
 } manager;
 
-int sendLogin(string username, string password)
+class Network
 {
-	char buf[BUFSIZ];
-	sprintf(buf, "login %s %s", username.c_str(), password.c_str());
-	manager.setBuff(username);
-	send(client_sockfd, buf, strlen(buf), 0);
-}
+	public:
 
-int recvLogin()
-{
-	char buf[BUFSIZ];
-	int len = recv(client_sockfd, buf, BUFSIZ, 0);
-	buf[len] = '\0';
-	int status;
-	sscanf(buf, "%d", &status);
-	if (status == 0)
+	int login(string username, string password)
 	{
-		manager.login();
-		printf("Login succeed. Your ID: %s\n", manager.getName().c_str());
+		char buf[BUFSIZ];
+		sprintf(buf, "login %s %s", username.c_str(), password.c_str());
+		manager.setBuff(username);
+		send(client_sockfd, buf, strlen(buf), 0);
+		int len = recv(client_sockfd, buf, BUFSIZ, 0);
+		buf[len] = '\0';
+		int status;
+		sscanf(buf, "%d", &status);
+		if (status == 0)
+		{
+			manager.login();
+			printf("Login succeed. Your ID: %s\n", manager.getName().c_str());
+			return 0;
+		}
+		if (status == 1)
+		{
+			printf("Password wrong.\n");
+			return 1;
+		}
+		if (status == 2)
+		{
+			printf("No such user.\n");
+			return 1;
+		}
+	}
+
+	int regist(string username, string password)
+	{
+		char buf[BUFSIZ];
+		sprintf(buf, "regist %s %s", username.c_str(), password.c_str());
+		send(client_sockfd, buf, strlen(buf), 0);
+		int len = recv(client_sockfd, buf, BUFSIZ, 0);
+		buf[len] = '\0';
+		int status;
+		sscanf(buf, "%d", &status);
+		if (status == 0)
+		{
+			printf("Register succeed.\n");
+			return 0;
+		}
+		if (status == 1)
+		{
+			printf("Username existed.\n");
+			return 1;
+		}
+	}
+
+	int search()
+	{
+		char buf[BUFSIZ];
+		sprintf(buf, "search");
+		send(client_sockfd, buf, strlen(buf), 0);
+		int len = recv(client_sockfd, buf, BUFSIZ, 0);
+		buf[len] = '\0';
+		string str(buf);
+		printf("User list:\n");
+		printf("%s\n", str.c_str());
+	}
+
+	int addFriend(string username)
+	{
+		char buf[BUFSIZ];
+		sprintf(buf, "add %s %s", manager.getName().c_str(), username.c_str());
+		send(client_sockfd, buf, strlen(buf), 0);
+		int len = recv(client_sockfd, buf, BUFSIZ, 0);
+		buf[len] = '\0';
+		int status;
+		sscanf(buf, "%d", &status);
+		if (status == 0)
+		{
+			printf("Add friend succeed.\n");
+			return 0;
+		}
+		if (status == 1)
+		{
+			printf("No such user.\n");
+			return 1;
+		}
+	}
+
+	int searchFriend()
+	{
+		char buf[BUFSIZ];
+		sprintf(buf, "ls %s", manager.getName().c_str());
+		send(client_sockfd, buf, strlen(buf), 0);
+		int len = recv(client_sockfd, buf, BUFSIZ, 0);
+		buf[len] = '\0';
+		string str(buf);
+		printf("Friend list:\n");
+		printf("%s\n", str.c_str());
+	}
+
+	int chat(string username)
+	{
+		char buf[BUFSIZ];
+		sprintf(buf, "chat %s %s", manager.getName().c_str(), username.c_str());
+		send(client_sockfd, buf, strlen(buf), 0);
+		int len = recv(client_sockfd, buf, BUFSIZ, 0);
+		buf[len] = '\0';
+		int status;
+		sscanf(buf, "%d", &status);
+		if (status == 1)
+		{
+			printf("Not your friend.\n");
+			return 1;
+		}
+		printf("Chat succeed.\n");
+		manager.startChat(username);
 		return 0;
 	}
-	if (status == 1)
+
+	int sendmsg(string content)
 	{
-		printf("Password wrong.\n");
-		return 1;
+		char buf[BUFSIZ];
+		sprintf(buf, "sendmsg %s %s %s", manager.getName().c_str(), manager.getChat().c_str(), content.c_str());
+		send(client_sockfd, buf, strlen(buf), 0);
+		int len = recv(client_sockfd, buf, BUFSIZ, 0);
+		buf[len] = '\0';
+		string str(buf);
+		printf("%s\n", str.c_str());
 	}
-	if (status == 2)
+
+	int sendfile(string content)
 	{
-		printf("No such user.\n");
-		return 1;
+		char buf[BUFSIZ];
+		sprintf(buf, "sendfile %s %s %s", manager.getName().c_str(), manager.getChat().c_str(), content.c_str());
+		send(client_sockfd, buf, strlen(buf), 0);
+		int len = recv(client_sockfd, buf, BUFSIZ, 0);
+		buf[len] = '\0';
+		string str(buf);
+		printf("%s\n", str.c_str());
 	}
-}
 
-int sendRegist(string username, string password)
-{
-	char buf[BUFSIZ];
-	sprintf(buf, "regist %s %s", username.c_str(), password.c_str());
-	send(client_sockfd, buf, strlen(buf), 0);
-}
-
-int recvRegist()
-{
-	char buf[BUFSIZ];
-	int len = recv(client_sockfd, buf, BUFSIZ, 0);
-	buf[len] = '\0';
-	int status;
-	sscanf(buf, "%d", &status);
-	if (status == 0)
+	int recvmsg()
 	{
-		printf("Register succeed.\n");
-		return 0;
+		char buf[BUFSIZ];
+		sprintf(buf, "recvmsg %s", manager.getName().c_str());
+		send(client_sockfd, buf, strlen(buf), 0);
+		int len = recv(client_sockfd, buf, BUFSIZ, 0);
+		buf[len] = '\0';
+		string str(buf);
+		printf("%s\n", str.c_str());
 	}
-	if (status == 1)
+
+	int recvmsgFrom()
 	{
-		printf("Username existed.\n");
-		return 1;
+		char buf[BUFSIZ];
+		sprintf(buf, "recvmsgfrom %s %s", manager.getName().c_str(), manager.getChat().c_str());
+		send(client_sockfd, buf, strlen(buf), 0);
+		int len = recv(client_sockfd, buf, BUFSIZ, 0);
+		buf[len] = '\0';
+		string str(buf);
+		if (str != "undefined") printf("%s\n", str.c_str());
 	}
-}
 
-int sendSearch()
-{
-	char buf[BUFSIZ];
-	sprintf(buf, "search %s", manager.getName().c_str());
-	send(client_sockfd, buf, strlen(buf), 0);
-}
-
-int recvSearch()
-{
-	char buf[BUFSIZ];
-	int len = recv(client_sockfd, buf, BUFSIZ, 0);
-	buf[len] = '\0';
-	string str(buf);
-	printf("User list:\n");
-	printf("%s\n", str.substr(5).c_str());
-}
-
-int sendAdd(string username)
-{
-	char buf[BUFSIZ];
-	sprintf(buf, "add %s %s", manager.getName().c_str(), username.c_str());
-	send(client_sockfd, buf, strlen(buf), 0);
-}
-
-int recvAdd()
-{
-	char buf[BUFSIZ];
-	int len = recv(client_sockfd, buf, BUFSIZ, 0);
-	buf[len] = '\0';
-	int status;
-	sscanf(buf, "%d", &status);
-	if (status == 0)
+	int recvfile()
 	{
-		printf("Add friend succeed.\n");
-		return 0;
+		char buf[BUFSIZ];
+		sprintf(buf, "recvfile %s", manager.getName().c_str());
+		send(client_sockfd, buf, strlen(buf), 0);
+		int len = recv(client_sockfd, buf, BUFSIZ, 0);
+		buf[len] = '\0';
+		string str(buf);
+		printf("%s\n", str.c_str());
 	}
-	if (status == 1)
+
+	int recvfileFrom()
 	{
-		printf("No such user.\n");
-		return 1;
+		char buf[BUFSIZ];
+		sprintf(buf, "recvfilefrom %s %s", manager.getName().c_str(), manager.getChat().c_str());
+		send(client_sockfd, buf, strlen(buf), 0);
+		int len = recv(client_sockfd, buf, BUFSIZ, 0);
+		buf[len] = '\0';
+		string str(buf);
+		printf("%s\n", str.c_str());
 	}
-}
 
-int sendLs()
-{
-	char buf[BUFSIZ];
-	sprintf(buf, "ls %s", manager.getName().c_str());
-	send(client_sockfd, buf, strlen(buf), 0);
-}
+	int profile()
+	{
+		char buf[BUFSIZ];
+		sprintf(buf, "profile %s", manager.getName().c_str());
+		send(client_sockfd, buf, strlen(buf), 0);
+		int len = recv(client_sockfd, buf, BUFSIZ, 0);
+		buf[len] = '\0';
+		string str(buf);
+		printf("Your profile: %s\n", str.c_str());
+	}
+} network;
 
-int recvLs()
-{
-	char buf[BUFSIZ];
-	int len = recv(client_sockfd, buf, BUFSIZ, 0);
-	buf[len] = '\0';
-	printf("!!!%d\n%s\n", strlen(buf), buf);
-	string str(buf);
-	printf("Friend list:\n");
-	printf("%s\n", str.substr(5).c_str());
-}
 
-int sendChat(string username, char *buf)
+void recvMsgAuto()
 {
-	sprintf(buf, "chat %s %s", manager.getName().c_str(), username.c_str());
-	manager.startChat(username);
-}
-
-int sendSendmsg(string content, char *buf)
-{
-	sprintf(buf, "sendmsg %s %s %s", manager.getName().c_str(), manager.getChat().c_str(), content.c_str());
-}
-
-int sendSendfile(string content, char *buf)
-{
-	sprintf(buf, "sendfile %s %s %s", manager.getName().c_str(), manager.getChat().c_str(), content.c_str());
-}
-
-int sendRecvmsg(char *buf)
-{
-	sprintf(buf, "recvmsg %s", manager.getName().c_str());
-}
-
-int sendRecvfile(char *buf)
-{
-	sprintf(buf, "recvfile %s", manager.getName().c_str());
-}
-
-int sendProfile(char *buf)
-{
-	sprintf(buf, "profile %s", manager.getName().c_str());
-}
-
-int sendSync(char *buf)
-{
-	sprintf(buf, "sync %s", manager.getName().c_str());
+	int flag = 1;
+	while (flag)
+	{
+		network.recvmsgFrom();
+		manager.lock();
+		flag = manager.getFlag();
+		manager.unlock();
+		sleep(1);
+	}
 }
 
 int main()
@@ -273,8 +359,7 @@ int main()
 			scanf("%s", &u[0]);
 			printf("Enter password:\n");
 			scanf("%s", &p[0]);
-			sendLogin(u, p);
-			recvLogin();
+			network.login(u, p);
 			continue;
 		}
 		if (!strcmp(s, "regist"))
@@ -288,8 +373,7 @@ int main()
 			scanf("%s", &u[0]);
 			printf("Enter password:\n");
 			scanf("%s", &p[0]);
-			sendRegist(u, p);
-			recvRegist();
+			network.regist(u, p);
 			continue;
 		}
 		if (!strcmp(s, "search"))
@@ -299,8 +383,7 @@ int main()
 				printf("Please login or exit chat.\n");
 				continue;
 			}
-			sendSearch();
-			recvSearch();
+			network.search();
 			continue;
 		}
 		if (!strcmp(s, "add"))
@@ -311,8 +394,7 @@ int main()
 				continue;
 			}
 			scanf("%s", &u[0]);
-			sendAdd(u);
-			recvAdd();
+			network.addFriend(u);
 			continue;
 		}
 		if (!strcmp(s, "ls"))
@@ -322,8 +404,7 @@ int main()
 				printf("Please login or exit chat.\n");
 				continue;
 			}
-			sendLs();
-			recvLs();
+			network.searchFriend();
 			continue;
 		}
 		if (!strcmp(s, "chat"))
@@ -334,11 +415,7 @@ int main()
 				continue;
 			}
 			scanf("%s", &u[0]);
-			sendChat(u, buf);
-			len = send(client_sockfd, buf, strlen(buf), 0);
-			len = recv(client_sockfd, buf, BUFSIZ, 0);
-			buf[len] = '\0';
-			printf("%s\n", buf);
+			network.chat(u);
 			continue;
 		}
 		if (!strcmp(s, "sendmsg"))
@@ -349,11 +426,7 @@ int main()
 				continue;
 			}
 			scanf("%s", &u[0]);
-			sendSendmsg(u, buf);
-			len = send(client_sockfd, buf, strlen(buf), 0);
-			len = recv(client_sockfd, buf, BUFSIZ, 0);
-			buf[len] = '\0';
-			printf("%s\n", buf);
+			network.sendmsg(u);
 			continue;
 		}
 		if (!strcmp(s, "sendfile"))
@@ -364,53 +437,26 @@ int main()
 				continue;
 			}
 			scanf("%s", &u[0]);
-			sendSendfile(u, buf);
-			len = send(client_sockfd, buf, strlen(buf), 0);
-			len = recv(client_sockfd, buf, BUFSIZ, 0);
-			buf[len] = '\0';
-			printf("%s\n", buf);
+			network.sendfile(u);
 			continue;
 		}
 		if (!strcmp(s, "recvmsg"))
 		{
-			if (manager.getStatus() != 1)
-			{
-				printf("Please login or exit chat.\n");
-				continue;
-			}
-			sendRecvmsg(buf);
-			len = send(client_sockfd, buf, strlen(buf), 0);
-			len = recv(client_sockfd, buf, BUFSIZ, 0);
-			buf[len] = '\0';
-			printf("%s\n", buf);
+			if (manager.getStatus() == 1) network.recvmsg();
+			else printf("Please login or exit chat.");
 			continue;
 		}
 		if (!strcmp(s, "recvfile"))
 		{
-			if (manager.getStatus() != 1)
-			{
-				printf("Please login or exit chat.\n");
-				continue;
-			}
-			sendRecvfile(buf);
-			len = send(client_sockfd, buf, strlen(buf), 0);
-			len = recv(client_sockfd, buf, BUFSIZ, 0);
-			buf[len] = '\0';
-			printf("%s\n", buf);
+			if (manager.getStatus() == 0) printf("Please login first.\n");
+			if (manager.getStatus() == 1) network.recvfile();
+			if (manager.getStatus() == 2) network.recvfileFrom();
 			continue;
 		}
 		if (!strcmp(s, "profile"))
 		{
-			if (manager.getStatus() != 1)
-			{
-				printf("Please login or exit chat.\n");
-				continue;
-			}
-			sendProfile(buf);
-			len = send(client_sockfd, buf, strlen(buf), 0);
-			len = recv(client_sockfd, buf, BUFSIZ, 0);
-			buf[len] = '\0';
-			printf("%s\n", buf);
+			if (manager.getStatus() != 1) printf("Please login or exit chat.\n");
+			else network.profile();
 			continue;
 		}
 		if (!strcmp(s, "exit"))
@@ -429,7 +475,7 @@ int main()
 			}
 			else break;
 		}
-		printf("???\n");
+		printf("Invalid operation.\n");
 	}
 	close(client_sockfd);
 	return 0;
