@@ -22,6 +22,13 @@ struct Msg
 	}
 };
 
+struct File
+{
+	int read;
+	string filename;
+	vector <string> fragmentList;
+};
+
 class User
 {
 	private:
@@ -29,6 +36,7 @@ class User
 	string username, password;
 	vector <string> friendList;
 	vector <Msg> msgList;
+	vector <File*> fileList;
 
 	public:
 	
@@ -102,6 +110,28 @@ class User
 			break;
 		}
 		return str;
+	}
+
+	int sendFile(string user, File *pf)
+	{
+		fileList.push_back(pf);
+		return 0;
+	}
+
+	int checkFile()
+	{
+		for (auto const i : fileList) if (!i->read) return 0;
+		return 1;
+	}
+
+	File *recvfile()
+	{
+		for (auto i : fileList) if (!i->read)
+		{
+			i->read = 1;
+			return i;
+		}
+		return 0;
 	}
 };
 
@@ -187,17 +217,40 @@ class Manager
 		for (auto &i : userList) if (user1 == i.getName()) return i.recvmsgFrom(user2);
 	}
 
+	int sendFile(string user1, string user2, File *pf)
+	{
+		for (auto &i : userList) if (user2 == i.getName()) return i.sendFile(user1, pf);
+	}
+
+	int checkUser(string user)
+	{
+		for (auto &i : userList) if (user == i.getName()) return 0;
+		return 1;
+	}
+
+	int checkFile(string user)
+	{
+		for (auto &i : userList) if (user == i.getName()) return i.checkFile();
+		return 1;
+	}
+
+	File *recvfile(string user)
+	{
+		for (auto &i : userList) if (user == i.getName()) return i.recvfile();
+		return 0;
+	}
+
 } manager;
 
 void recv_data(int client_sockfd)
 {
-	char buf[BUFSIZ], args[4][BUFSIZ];
+	char buf[BUFSIZ], args[8][128];
 	memset(buf, 0, BUFSIZ);
 	int len;
 	while ((len = recv(client_sockfd, buf, BUFSIZ, 0)) > 0)
 	{
 		buf[len] = '\0';
-		sscanf(buf, "%s%s%s%s", args[0], args[1], args[2], args[3]);
+		sscanf(buf, "%s%s%s%s", args[0], args[1], args[2], args[3], args[4]);
 		printf("Recv: %s\n", buf);
 		if (!strcmp(args[0], "login"))
 		{
@@ -273,12 +326,6 @@ void recv_data(int client_sockfd)
 			send(client_sockfd, buf, strlen(buf), 0);
 			continue;
 		}
-		if (!strcmp(args[0], "sendfile"))
-		{
-			sprintf(buf, "Sendfile succeed.");
-			send(client_sockfd, buf, strlen(buf), 0);
-			continue;
-		}
 		if (!strcmp(args[0], "recvmsg"))
 		{
 			manager.lock();
@@ -297,17 +344,54 @@ void recv_data(int client_sockfd)
 			send(client_sockfd, buf, strlen(buf), 0);
 			continue;
 		}
-		if (!strcmp(args[0], "recvfile"))
+		if (!strcmp(args[0], "sendfile"))
 		{
-			sprintf(buf, "Recvfile succeed.");
+			char s[4][128];
+			int n;
+			sscanf(buf, "%s%s%s%s%d", s[0], s[1], s[2], s[3], &n);
+			File *pf = new File();
+			pf->filename = string(args[3]);
+			pf->read = 0;
+			pf->fragmentList.clear();
+			sprintf(buf, "ready");
+			if (manager.checkUser(args[2]))
+			{
+				sprintf(buf, "nouser");
+				send(client_sockfd, buf, strlen(buf), 0);
+				continue;
+			}
 			send(client_sockfd, buf, strlen(buf), 0);
+			for (int i = 0; i < n; i++)
+			{
+				len = recv(client_sockfd, buf, BUFSIZ, 0);
+				buf[len] = '\0';
+				pf->fragmentList.push_back(buf);
+				memset(buf, 0, sizeof(buf));
+				sprintf(buf, "ok");
+				send(client_sockfd, buf, strlen(buf), 0);
+			}
+			manager.sendFile(args[1], args[2], pf);
 			continue;
 		}
-		if (!strcmp(args[0], "recvfilefrom"))
+		if (!strcmp(args[0], "recvfile"))
 		{
-			sprintf(buf, "Recvfile from %s succeed.", args[2]);
+			File *pf;
+			int status = 1;
+			status = manager.checkFile(args[1]);
+			if (!status) pf = manager.recvfile(args[1]);
+			if (status)	sprintf(buf, "%d", status);
+			else sprintf(buf, "%d %s %d", status, pf->filename.c_str(), pf->fragmentList.size());
+			printf("%s\n", buf);
 			send(client_sockfd, buf, strlen(buf), 0);
-			continue;
+			if (status) continue;
+			for (auto &i : pf->fragmentList)
+			{
+				len = recv(client_sockfd, buf, BUFSIZ, 0);
+				buf[len] = '\0';
+				memset(buf, 0, sizeof(buf));
+				sprintf(buf, "%s", i.c_str());
+				send(client_sockfd, buf, strlen(buf), 0);
+			}
 		}
 		sprintf(buf, "Undefined.");
 		send(client_sockfd, buf, strlen(buf), 0);

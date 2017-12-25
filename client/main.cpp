@@ -6,12 +6,19 @@
 #include <netinet/in.h>
 #include <arpa/inet.h>
 #include <string>
+#include <vector>
 #include <thread>
 #include <mutex>
 
+#include <sys/stat.h>
+#include <stdarg.h>
+
 using namespace std;
 
+const int FRAGSIZ = 2048;
+
 int client_sockfd;
+struct sockaddr_in remote_addr;
 
 void recvMsgAuto();
 
@@ -81,6 +88,22 @@ class Manager
 		mut.lock();
 		threadExitFlag = 0;
 		mut.unlock();
+	}
+
+	int pauseChat()
+	{
+		mut.lock();
+		threadExitFlag = 0;
+		mut.unlock();
+		sleep(2);
+	}
+
+	int reChat()
+	{
+		mut.lock();
+		threadExitFlag = 1;
+		mut.unlock();
+		thread(recvMsgAuto).detach();
 	}
 
 	int lock()
@@ -228,17 +251,6 @@ class Network
 		printf("%s\n", str.c_str());
 	}
 
-	int sendfile(string content)
-	{
-		char buf[BUFSIZ];
-		sprintf(buf, "sendfile %s %s %s", manager.getName().c_str(), manager.getChat().c_str(), content.c_str());
-		send(client_sockfd, buf, strlen(buf), 0);
-		int len = recv(client_sockfd, buf, BUFSIZ, 0);
-		buf[len] = '\0';
-		string str(buf);
-		printf("%s\n", str.c_str());
-	}
-
 	int recvmsg()
 	{
 		char buf[BUFSIZ];
@@ -261,26 +273,115 @@ class Network
 		if (str != "undefined") printf("%s\n", str.c_str());
 	}
 
+	int sendfile(string user, string path)
+	{
+		char absPath[128];
+		string fileName;
+		realpath(path.c_str(), absPath);
+		fileName = string(absPath).substr(string(absPath).find_last_of('/') + 1);
+		printf("%s\n", fileName.c_str());
+
+		FILE *fp = fopen(absPath, "r");
+		if (fp == 0)
+		{
+			printf("File not found.\n");
+			return 1;
+		}
+
+		vector <string> fragmentList;
+		fragmentList.clear();
+		char fileBuffer[FRAGSIZ];
+		memset(fileBuffer, 0, sizeof(fileBuffer));
+		int len;
+		while ((len = fread(fileBuffer, sizeof(char), FRAGSIZ, fp)) > 0)
+		{
+			fragmentList.push_back(fileBuffer);
+			memset(fileBuffer, 0, sizeof(fileBuffer));
+		}
+
+		fclose(fp);
+		
+		char buf[BUFSIZ];
+		sprintf(buf, "sendfile %s %s %s %d", manager.getName().c_str(), user.c_str(), fileName.c_str(), fragmentList.size());
+		send(client_sockfd, buf, strlen(buf), 0);
+		
+		len = recv(client_sockfd, buf, BUFSIZ, 0);
+		buf[len] = '\0';
+		string str(buf);
+		if (str != "ready")
+		{
+			printf("No such user.\n");
+			return 1;
+		}
+		printf("Ready to send.\n");
+		
+		int count = 0;
+		for (auto const &i : fragmentList)
+		{
+			sprintf(buf, "%s", i.c_str());
+			send(client_sockfd, buf, strlen(buf), 0);
+			len = recv(client_sockfd, buf, BUFSIZ, 0);
+			buf[len] = '\0';
+			str = string(buf);
+			if (str != "ok")
+			{
+				printf("Send file error.", count, str);
+				return 1;
+			}
+			printf("Fragment ok %d out of %d.\n", ++count, fragmentList.size());
+		}
+		printf("File send succeed.\n");
+	}
+	
 	int recvfile()
 	{
+		char *phome;
+		phome = getenv("HOME");
+		string dir(phome);
+		dir += "/download/";
+		
 		char buf[BUFSIZ];
 		sprintf(buf, "recvfile %s", manager.getName().c_str());
 		send(client_sockfd, buf, strlen(buf), 0);
 		int len = recv(client_sockfd, buf, BUFSIZ, 0);
 		buf[len] = '\0';
-		string str(buf);
-		printf("%s\n", str.c_str());
-	}
 
-	int recvfileFrom()
-	{
-		char buf[BUFSIZ];
-		sprintf(buf, "recvfilefrom %s %s", manager.getName().c_str(), manager.getChat().c_str());
-		send(client_sockfd, buf, strlen(buf), 0);
-		int len = recv(client_sockfd, buf, BUFSIZ, 0);
-		buf[len] = '\0';
-		string str(buf);
-		printf("%s\n", str.c_str());
+		int status;
+		sscanf(buf, "%d", &status);
+		if (status)
+		{
+			printf("No file to recv.\n");
+			return 1;
+		}
+		int size;
+		string fileName;
+		sscanf(buf, "%d%s%d", &status, &fileName[0], &size);
+
+		char tmp[128];
+		sprintf(tmp, "%s%s", dir.c_str(), fileName.c_str());
+		dir = string(tmp);
+
+		printf("Dir: %s\n", dir.c_str());
+
+		string str("");
+		for (int i = 0; i < size; i++)
+		{
+			sprintf(buf, "ok");
+			send(client_sockfd, buf, strlen(buf), 0);
+			len = recv(client_sockfd, buf, BUFSIZ, 0);
+			buf[len] = '\0';
+			str = str + string(buf);
+		}
+
+		FILE *pf = fopen(dir.c_str(), "w");
+		if (pf == 0)
+		{
+			printf("Can't open dir.\n");
+			return 1;
+		}
+		fputs(str.c_str(), pf);
+		fclose(pf);
+		printf("File saved as: %s\n", dir.c_str());
 	}
 
 	int profile()
@@ -299,6 +400,21 @@ class Network
 void recvMsgAuto()
 {
 	int flag = 1;
+	int recvmsg_sockfd;
+	if ((recvmsg_sockfd = socket(PF_INET, SOCK_STREAM, 0)) < 0)
+	{
+		perror("socket error");
+		return;
+	}
+	if (connect(recvmsg_sockfd, (struct sockaddr *) &remote_addr, sizeof(struct sockaddr)) < 0)
+	{
+		perror("connect error");
+		return;
+	}
+
+	char buf[BUFSIZ];
+	int len = recv(recvmsg_sockfd, buf, BUFSIZ, 0);
+	buf[len] = '\0';
 	while (flag)
 	{
 		network.recvmsgFrom();
@@ -307,6 +423,7 @@ void recvMsgAuto()
 		manager.unlock();
 		sleep(1);
 	}
+	close(recvmsg_sockfd);
 }
 
 int main()
@@ -316,7 +433,6 @@ int main()
 	scanf("%s", host_addr_str);
 
 	int len;
-	struct sockaddr_in remote_addr;
 	char buf[BUFSIZ];
 	memset(&remote_addr, 0, sizeof(remote_addr));
 	remote_addr.sin_family = AF_INET;
@@ -431,26 +547,25 @@ int main()
 		}
 		if (!strcmp(s, "sendfile"))
 		{
-			if (manager.getStatus() != 2)
+			if (manager.getStatus() != 1)
 			{
-				printf("Please enter chat first.\n");
+				printf("Please login or exit chat.\n");
 				continue;
 			}
-			scanf("%s", &u[0]);
-			network.sendfile(u);
+			scanf("%s%s", &u[0], &p[0]);
+			network.sendfile(u, p);
 			continue;
 		}
 		if (!strcmp(s, "recvmsg"))
 		{
 			if (manager.getStatus() == 1) network.recvmsg();
-			else printf("Please login or exit chat.");
+			else printf("Please login or exit chat.\n");
 			continue;
 		}
 		if (!strcmp(s, "recvfile"))
 		{
-			if (manager.getStatus() == 0) printf("Please login first.\n");
 			if (manager.getStatus() == 1) network.recvfile();
-			if (manager.getStatus() == 2) network.recvfileFrom();
+			else printf("Please login or exit chat.\n");
 			continue;
 		}
 		if (!strcmp(s, "profile"))
