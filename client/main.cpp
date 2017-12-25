@@ -6,22 +6,31 @@
 #include <netinet/in.h>
 #include <arpa/inet.h>
 #include <string>
+#include <thread>
+#include <mutex>
 
 using namespace std;
 
 int client_sockfd;
+
+void recvMsgAuto();
 
 class Manager
 {
 	private:
 	
 	string name, chatUser, buffer;
+	mutex mut;
+	int threadExitFlag;
 
 	int status;
 	
 	public:
 	
-	Manager() {}
+	Manager()
+	{
+		threadExitFlag = 0;
+	}
 
 	string getName()
 	{
@@ -54,6 +63,10 @@ class Manager
 	{
 		chatUser = user;
 		status = 2;
+		mut.lock();
+		threadExitFlag = 1;
+		mut.unlock();
+		thread(recvMsgAuto).detach();
 	}
 
 	string getChat()
@@ -64,7 +77,27 @@ class Manager
 	int endChat()
 	{
 		chatUser = "";
+		status = 1;
+		mut.lock();
+		threadExitFlag = 0;
+		mut.unlock();
 	}
+
+	int lock()
+	{
+		mut.lock();
+	}
+
+	int unlock()
+	{
+		mut.unlock();
+	}
+
+	int getFlag()
+	{
+		return threadExitFlag;
+	}
+
 } manager;
 
 class Network
@@ -129,7 +162,7 @@ class Network
 		buf[len] = '\0';
 		string str(buf);
 		printf("User list:\n");
-		printf("%s\n", str.substr(5).c_str());
+		printf("%s\n", str.c_str());
 	}
 
 	int addFriend(string username)
@@ -162,12 +195,26 @@ class Network
 		buf[len] = '\0';
 		string str(buf);
 		printf("Friend list:\n");
-		printf("%s\n", str.substr(5).c_str());
+		printf("%s\n", str.c_str());
 	}
 
 	int chat(string username)
 	{
+		char buf[BUFSIZ];
+		sprintf(buf, "chat %s %s", manager.getName().c_str(), username.c_str());
+		send(client_sockfd, buf, strlen(buf), 0);
+		int len = recv(client_sockfd, buf, BUFSIZ, 0);
+		buf[len] = '\0';
+		int status;
+		sscanf(buf, "%d", &status);
+		if (status == 1)
+		{
+			printf("Not your friend.\n");
+			return 1;
+		}
+		printf("Chat succeed.\n");
 		manager.startChat(username);
+		return 0;
 	}
 
 	int sendmsg(string content)
@@ -175,19 +222,17 @@ class Network
 		char buf[BUFSIZ];
 		sprintf(buf, "sendmsg %s %s %s", manager.getName().c_str(), manager.getChat().c_str(), content.c_str());
 		send(client_sockfd, buf, strlen(buf), 0);
-		printf("...");
 		int len = recv(client_sockfd, buf, BUFSIZ, 0);
 		buf[len] = '\0';
 		string str(buf);
 		printf("%s\n", str.c_str());
 	}
 
-	int sendfile(string content, char *buf)
+	int sendfile(string content)
 	{
 		char buf[BUFSIZ];
 		sprintf(buf, "sendfile %s %s %s", manager.getName().c_str(), manager.getChat().c_str(), content.c_str());
 		send(client_sockfd, buf, strlen(buf), 0);
-		printf("...\n");
 		int len = recv(client_sockfd, buf, BUFSIZ, 0);
 		buf[len] = '\0';
 		string str(buf);
@@ -199,7 +244,6 @@ class Network
 		char buf[BUFSIZ];
 		sprintf(buf, "recvmsg %s", manager.getName().c_str());
 		send(client_sockfd, buf, strlen(buf), 0);
-		printf("...\n");
 		int len = recv(client_sockfd, buf, BUFSIZ, 0);
 		buf[len] = '\0';
 		string str(buf);
@@ -209,21 +253,19 @@ class Network
 	int recvmsgFrom()
 	{
 		char buf[BUFSIZ];
-		sprintf(buf, "recvmsgfrom %s %s", manager.getName().c_str(), manager.chatChat().c_str());
+		sprintf(buf, "recvmsgfrom %s %s", manager.getName().c_str(), manager.getChat().c_str());
 		send(client_sockfd, buf, strlen(buf), 0);
-		printf("...\n");
 		int len = recv(client_sockfd, buf, BUFSIZ, 0);
 		buf[len] = '\0';
 		string str(buf);
-		printf("%s\n", str.c_str());
+		if (str != "undefined") printf("%s\n", str.c_str());
 	}
 
-	int recvfile(char *buf)
+	int recvfile()
 	{
 		char buf[BUFSIZ];
-		sprintf(buf, "recvdile %s", manager.getName().c_str());
+		sprintf(buf, "recvfile %s", manager.getName().c_str());
 		send(client_sockfd, buf, strlen(buf), 0);
-		printf("...\n");
 		int len = recv(client_sockfd, buf, BUFSIZ, 0);
 		buf[len] = '\0';
 		string str(buf);
@@ -233,9 +275,8 @@ class Network
 	int recvfileFrom()
 	{
 		char buf[BUFSIZ];
-		sprintf(buf, "recvfilefrom %s %s", manager.getName().c_str(), manager.chatChat().c_str());
+		sprintf(buf, "recvfilefrom %s %s", manager.getName().c_str(), manager.getChat().c_str());
 		send(client_sockfd, buf, strlen(buf), 0);
-		printf("...\n");
 		int len = recv(client_sockfd, buf, BUFSIZ, 0);
 		buf[len] = '\0';
 		string str(buf);
@@ -253,6 +294,20 @@ class Network
 		printf("Your profile: %s\n", str.c_str());
 	}
 } network;
+
+
+void recvMsgAuto()
+{
+	int flag = 1;
+	while (flag)
+	{
+		network.recvmsgFrom();
+		manager.lock();
+		flag = manager.getFlag();
+		manager.unlock();
+		sleep(1);
+	}
+}
 
 int main()
 {
@@ -382,21 +437,20 @@ int main()
 				continue;
 			}
 			scanf("%s", &u[0]);
-			network.sendfile(u, buf);
+			network.sendfile(u);
 			continue;
 		}
 		if (!strcmp(s, "recvmsg"))
 		{
-			if (manager.getStatus() == 0) printf("Please login first.\n");
 			if (manager.getStatus() == 1) network.recvmsg();
-			if (manager.getStatus() == 2) network.recvmsgFrom();
+			else printf("Please login or exit chat.");
 			continue;
 		}
 		if (!strcmp(s, "recvfile"))
 		{
 			if (manager.getStatus() == 0) printf("Please login first.\n");
-			if (manager.getStatus() == 1) network.recvmsg();
-			if (manager.getStatus() == 2) network.recvmsgFrom();
+			if (manager.getStatus() == 1) network.recvfile();
+			if (manager.getStatus() == 2) network.recvfileFrom();
 			continue;
 		}
 		if (!strcmp(s, "profile"))
