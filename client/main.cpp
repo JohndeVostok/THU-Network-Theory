@@ -251,6 +251,28 @@ class Network
 		printf("%s\n", str.c_str());
 	}
 
+	int recvmsg()
+	{
+		char buf[BUFSIZ];
+		sprintf(buf, "recvmsg %s", manager.getName().c_str());
+		send(client_sockfd, buf, strlen(buf), 0);
+		int len = recv(client_sockfd, buf, BUFSIZ, 0);
+		buf[len] = '\0';
+		string str(buf);
+		printf("%s\n", str.c_str());
+	}
+
+	int recvmsgFrom()
+	{
+		char buf[BUFSIZ];
+		sprintf(buf, "recvmsgfrom %s %s", manager.getName().c_str(), manager.getChat().c_str());
+		send(client_sockfd, buf, strlen(buf), 0);
+		int len = recv(client_sockfd, buf, BUFSIZ, 0);
+		buf[len] = '\0';
+		string str(buf);
+		if (str != "undefined") printf("%s\n", str.c_str());
+	}
+
 	int sendfile(string user, string path)
 	{
 		char absPath[128];
@@ -276,6 +298,8 @@ class Network
 			fragmentList.push_back(fileBuffer);
 			memset(fileBuffer, 0, sizeof(fileBuffer));
 		}
+
+		fclose(fp);
 		
 		char buf[BUFSIZ];
 		sprintf(buf, "sendfile %s %s %s %d", manager.getName().c_str(), user.c_str(), fileName.c_str(), fragmentList.size());
@@ -294,7 +318,7 @@ class Network
 		int count = 0;
 		for (auto const &i : fragmentList)
 		{
-			sprintf(buf, "%s", i);
+			sprintf(buf, "%s", i.c_str());
 			send(client_sockfd, buf, strlen(buf), 0);
 			len = recv(client_sockfd, buf, BUFSIZ, 0);
 			buf[len] = '\0';
@@ -308,39 +332,15 @@ class Network
 		}
 		printf("File send succeed.\n");
 	}
-
-	int recvmsg()
-	{
-		char buf[BUFSIZ];
-		sprintf(buf, "recvmsg %s", manager.getName().c_str());
-		send(client_sockfd, buf, strlen(buf), 0);
-		int len = recv(client_sockfd, buf, BUFSIZ, 0);
-		buf[len] = '\0';
-		string str(buf);
-		printf("%s\n", str.c_str());
-	}
-
-	int recvmsgFrom()
-	{
-		char buf[BUFSIZ];
-		sprintf(buf, "recvmsgfrom %s %s", manager.getName().c_str(), manager.getChat().c_str());
-		send(client_sockfd, buf, strlen(buf), 0);
-		int len = recv(client_sockfd, buf, BUFSIZ, 0);
-		buf[len] = '\0';
-		string str(buf);
-		if (str != "undefined") printf("%s\n", str.c_str());
-	}
-
+	
 	int recvfile()
 	{
 		char *phome;
 		phome = getenv("HOME");
 		string dir(phome);
-		dir += "/Downloads/";
-		int flag = access(dir.c_str());
-		printf("%s %d\n", dir.c_str(), flag);
+		dir += "/download/";
 		
-/*		char buf[BUFSIZ];
+		char buf[BUFSIZ];
 		sprintf(buf, "recvfile %s", manager.getName().c_str());
 		send(client_sockfd, buf, strlen(buf), 0);
 		int len = recv(client_sockfd, buf, BUFSIZ, 0);
@@ -356,15 +356,33 @@ class Network
 		int size;
 		string fileName;
 		sscanf(buf, "%d%s%d", &status, &fileName[0], &size);
-		string str = "";
+
+		char tmp[128];
+		sprintf(tmp, "%s%s", dir.c_str(), fileName.c_str());
+		dir = string(tmp);
+
+		printf("Dir: %s\n", dir.c_str());
+
+		string str("");
 		for (int i = 0; i < size; i++)
 		{
 			sprintf(buf, "ok");
 			send(client_sockfd, buf, strlen(buf), 0);
 			len = recv(client_sockfd, buf, BUFSIZ, 0);
-			str += string(buf);
+			buf[len] = '\0';
+			str = str + string(buf);
 		}
-*/	}
+
+		FILE *pf = fopen(dir.c_str(), "w");
+		if (pf == 0)
+		{
+			printf("Can't open dir.\n");
+			return 1;
+		}
+		fputs(str.c_str(), pf);
+		fclose(pf);
+		printf("File saved as: %s\n", dir.c_str());
+	}
 
 	int profile()
 	{

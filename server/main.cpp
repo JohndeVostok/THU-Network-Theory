@@ -117,6 +117,22 @@ class User
 		fileList.push_back(pf);
 		return 0;
 	}
+
+	int checkFile()
+	{
+		for (auto const i : fileList) if (!i->read) return 0;
+		return 1;
+	}
+
+	File *recvfile()
+	{
+		for (auto i : fileList) if (!i->read)
+		{
+			i->read = 1;
+			return i;
+		}
+		return 0;
+	}
 };
 
 class Manager
@@ -212,6 +228,18 @@ class Manager
 		return 1;
 	}
 
+	int checkFile(string user)
+	{
+		for (auto &i : userList) if (user == i.getName()) return i.checkFile();
+		return 1;
+	}
+
+	File *recvfile(string user)
+	{
+		for (auto &i : userList) if (user == i.getName()) return i.recvfile();
+		return 0;
+	}
+
 } manager;
 
 void recv_data(int client_sockfd)
@@ -298,6 +326,24 @@ void recv_data(int client_sockfd)
 			send(client_sockfd, buf, strlen(buf), 0);
 			continue;
 		}
+		if (!strcmp(args[0], "recvmsg"))
+		{
+			manager.lock();
+			string str = manager.recvmsg(args[1]);
+			manager.unlock();
+			sprintf(buf, "%s", str.c_str());
+			send(client_sockfd, buf, strlen(buf), 0);
+			continue;
+		}
+		if (!strcmp(args[0], "recvmsgfrom"))
+		{
+			manager.lock();
+			string str = manager.recvmsgFrom(args[1], args[2]);
+			manager.unlock();
+			sprintf(buf, "%s", str.c_str());
+			send(client_sockfd, buf, strlen(buf), 0);
+			continue;
+		}
 		if (!strcmp(args[0], "sendfile"))
 		{
 			char s[4][128];
@@ -320,43 +366,32 @@ void recv_data(int client_sockfd)
 				len = recv(client_sockfd, buf, BUFSIZ, 0);
 				buf[len] = '\0';
 				pf->fragmentList.push_back(buf);
+				memset(buf, 0, sizeof(buf));
 				sprintf(buf, "ok");
 				send(client_sockfd, buf, strlen(buf), 0);
 			}
-			manager.lock();
 			manager.sendFile(args[1], args[2], pf);
-			manager.unlock();
-			continue;
-		}
-		if (!strcmp(args[0], "recvmsg"))
-		{
-			manager.lock();
-			string str = manager.recvmsg(args[1]);
-			manager.unlock();
-			sprintf(buf, "%s", str.c_str());
-			send(client_sockfd, buf, strlen(buf), 0);
-			continue;
-		}
-		if (!strcmp(args[0], "recvmsgfrom"))
-		{
-			manager.lock();
-			string str = manager.recvmsgFrom(args[1], args[2]);
-			manager.unlock();
-			sprintf(buf, "%s", str.c_str());
-			send(client_sockfd, buf, strlen(buf), 0);
 			continue;
 		}
 		if (!strcmp(args[0], "recvfile"))
 		{
-			sprintf(buf, "Recvfile succeed.");
+			File *pf;
+			int status = 1;
+			status = manager.checkFile(args[1]);
+			if (!status) pf = manager.recvfile(args[1]);
+			if (status)	sprintf(buf, "%d", status);
+			else sprintf(buf, "%d %s %d", status, pf->filename.c_str(), pf->fragmentList.size());
+			printf("%s\n", buf);
 			send(client_sockfd, buf, strlen(buf), 0);
-			continue;
-		}
-		if (!strcmp(args[0], "recvfilefrom"))
-		{
-			sprintf(buf, "Recvfile from %s succeed.", args[2]);
-			send(client_sockfd, buf, strlen(buf), 0);
-			continue;
+			if (status) continue;
+			for (auto &i : pf->fragmentList)
+			{
+				len = recv(client_sockfd, buf, BUFSIZ, 0);
+				buf[len] = '\0';
+				memset(buf, 0, sizeof(buf));
+				sprintf(buf, "%s", i.c_str());
+				send(client_sockfd, buf, strlen(buf), 0);
+			}
 		}
 		sprintf(buf, "Undefined.");
 		send(client_sockfd, buf, strlen(buf), 0);
