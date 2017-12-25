@@ -12,6 +12,7 @@
 using namespace std;
 
 int client_sockfd;
+struct sockaddr_in remote_addr;
 
 void recvMsgAuto();
 
@@ -299,6 +300,21 @@ class Network
 void recvMsgAuto()
 {
 	int flag = 1;
+	int recvmsg_sockfd;
+	if ((recvmsg_sockfd = socket(PF_INET, SOCK_STREAM, 0)) < 0)
+	{
+		perror("socket error");
+		return;
+	}
+	if (connect(recvmsg_sockfd, (struct sockaddr *) &remote_addr, sizeof(struct sockaddr)) < 0)
+	{
+		perror("connect error");
+		return;
+	}
+
+	char buf[BUFSIZ];
+	int len = recv(recvmsg_sockfd, buf, BUFSIZ, 0);
+	buf[len] = '\0';
 	while (flag)
 	{
 		network.recvmsgFrom();
@@ -307,6 +323,7 @@ void recvMsgAuto()
 		manager.unlock();
 		sleep(1);
 	}
+	close(recvmsg_sockfd);
 }
 
 int main()
@@ -316,7 +333,6 @@ int main()
 	scanf("%s", host_addr_str);
 
 	int len;
-	struct sockaddr_in remote_addr;
 	char buf[BUFSIZ];
 	memset(&remote_addr, 0, sizeof(remote_addr));
 	remote_addr.sin_family = AF_INET;
